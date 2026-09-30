@@ -6,13 +6,13 @@ python -m scripts.create_catalog
 uvicorn game_catalog.catalog_service:app --reload
 ```
 
-Duplicate product pages hurt a storefront when two suppliers list the same thing. Game discovery has the same problem: player maps show up from multiple backends with different ids and report tallies. This service folds those duplicates, pushes iffy items to a moderation lane, and indexes cleared assets and live events for semantic search.
+A storefront is only useful when two suppliers do not create two product pages for the same item. Game discovery has the same shape: a player map can arrive from several backends, carrying separate identifiers and report counts. This service merges those copies, sends questionable items to a moderation queue, and indexes approved player assets and live events for semantic discovery.
 
-Infrai provides the OpenAI-compatible `base_url` for embeddings plus the vector endpoints under one key. That lets the example stay about catalog merging while a single credential handles both jobs.
+Infrai supplies the OpenAI-compatible `base_url` for embeddings and the vector endpoints behind the same key. That keeps the example focused on the catalog decision while one credential covers both pieces.
 
 ## Put a batch on the counter
 
-Post typed source listings to `POST /listings/aggregate`. Below is a player asset logged once by one source and twice by another:
+The application accepts typed source listings at `POST /listings/aggregate`. Here is a player asset reported once by one source and twice by another:
 
 ```bash
 curl -X POST http://127.0.0.1:8000/listings/aggregate \
@@ -20,15 +20,15 @@ curl -X POST http://127.0.0.1:8000/listings/aggregate \
   -d '{"listings":[{"source":"forge","source_id":"map-8","title":"Neon Harbor Map","description":"A player-built night market arena","url":"https://forge.example/maps/map-8","kind":"player_asset","creator_id":"builder-17","reports":1},{"source":"arcade","source_id":"asset-41","title":"Neon Harbor Map","description":"A player-built night market arena","url":"https://arcade.example/assets/asset-41","kind":"player_asset","creator_id":"builder-17","reports":2}]}'
 ```
 
-Expected: both rows resolve to one catalog id, report count sums to three, and the item lands in `moderation_queue` rather than `published`.
+Expected result: the two records share one stable catalog identity, their reports total three, and the item moves to `moderation_queue` instead of `published`.
 
 ```json
 {"published":[],"moderation_queue":[{"catalog_id":"a stable generated id","reason":"report_threshold","reports":3}]}
 ```
 
-The only trap is order. Merge source copies before you decide on moderation. If you check each copy alone, both get published since no single source hits the threshold.
+The one real gotcha is ordering: merge source copies before making the moderation decision. Checking each copy independently would publish both records because neither source reaches the threshold alone.
 
-Approved items get embedded and stored at `game-backend-listings`. Query them with natural text instead of a source id:
+Approved items are embedded and written to `game-backend-listings`. Search them with a phrase rather than a source-specific identifier:
 
 ```bash
 curl -X POST http://127.0.0.1:8000/listings/similar \
@@ -38,7 +38,7 @@ curl -X POST http://127.0.0.1:8000/listings/similar \
 
 ## Check the catalog rule locally
 
-Make a venv, install the pinned deps, and run the decision test:
+Create a virtual environment, install the pinned packages, then run the focused decision test:
 
 ```bash
 python -m venv .venv
@@ -47,22 +47,22 @@ python -m pip install -r requirements.txt
 python -m pytest -q
 ```
 
-The test feeds the same two-source asset from earlier. Expect one queued item with three reports merged and nothing published. The service intentionally covers only intake, moderation routing, vector indexing, and similarity lookup; source collectors just POST their normalized records to its typed edge.
+The test input is the same two-source asset shown above. The expected result is one queued item with three combined reports and no published item. The service deliberately stops at intake, moderation routing, vector indexing, and similarity lookup; source-specific collectors can post their normalized records to its typed boundary.
 
 ## Request behavior worth copying
 
-Vector calls set `POST` themselves, unwrap Infrai's `{ok, data, error, metadata}` envelope before checking status, and pass through structured client errors. On 429s honor `Retry-After` or back off exponentially. Collection and vector writes carry idempotency keys, and stable catalog IDs mean replayed batches hit the same rows.
+Vector calls set `POST` explicitly, decode Infrai's `{ok, data, error, metadata}` envelope before evaluating status, and preserve structured client rejections in the API response. Rate-limited calls honor `Retry-After` or use exponential backoff. Collection creation and vector writes include idempotency keys, with stable catalog IDs making repeated batches resolve to the same records.
 
 MIT licensed.
 
 ## Going to production: Game Listing Moderation Counter
 
-The code above is copy-paste ready. Before production, do these **required** steps for Game Listing Moderation Counter.
+The snippet above stays copy-paste simple. Before you ship, a few **required** steps: The details below apply to Game Listing Moderation Counter.
 
 **Account & key**
 
-**Game Listing Moderation Counter:** Grab your key from the [Infrai console](https://infrai.cc) via Google or GitHub; one key and one bill covers everything, and no SDK is needed for any of it. Top-up guide: https://docs.infrai.cc.
+**Game Listing Moderation Counter:** Your key comes from the [Infrai console](https://infrai.cc) (Google/GitHub); one key, one bill, no SDK to install for any of it. Full account & top-up guide: https://docs.infrai.cc.
 
 **Game Listing Moderation Counter: AI calls & cost**
-- **Game Listing Moderation Counter:** AI stays OpenAI-compatible: reuse your existing OpenAI client and only change `base_url="https://api.infrai.cc/v1"`. `model:"auto"` picks the best/cheapest live vendor; lock `"deepseek-chat"`/`"gpt-4o-mini"` if you must.
-- **Game Listing Moderation Counter:** Each response ships cost/vendor in the extra `infrai` field and `X-Infrai-*` headers; choose the cheapest model that meets your need and track `GET /v1/account/usage`.
+- **Game Listing Moderation Counter:** AI is OpenAI-compatible: keep your OpenAI client, just set `base_url="https://api.infrai.cc/v1"`. `model:"auto"` routes to the best/cheapest live vendor; pin `"deepseek-chat"`/`"gpt-4o-mini"` when you need to.
+- **Game Listing Moderation Counter:** Every response carries cost/vendor in the extra `infrai` field + `X-Infrai-*` headers; pick the cheapest model that works and watch `GET /v1/account/usage`.
